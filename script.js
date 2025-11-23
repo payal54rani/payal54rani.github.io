@@ -442,9 +442,107 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetEmail = "payal.akshadhaafoundation@gmail.com";
 
             const subject = `New Contact Message from ${name}`;
-            const body = `Name: ${name}\nEmail: ${emailInput}\n\nMessage:\n${message}`;
+            const emailHtml = `
+                <h3>New Contact Message</h3>
+                <p><strong>Name:</strong> ${name}</p>
+                <p><strong>Email:</strong> ${emailInput}</p>
+                <p><strong>Message:</strong><br>${message.replace(/\n/g, '<br>')}</p>
+            `;
 
-            window.location.href = `mailto:${targetEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            // Show Loading State
+            const submitBtn = contactForm.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+            // Send Email via Worker
+            fetch(`${WORKER_URL}/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: targetEmail,
+                    subject: subject,
+                    html: emailHtml
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) throw new Error(data.error);
+
+                    // Success - Show Modal
+                    const modal = document.getElementById('reviewModal');
+                    const modalHeader = modal.querySelector('.modal-header h3');
+                    const modalIcon = modal.querySelector('.modal-header i');
+                    const modalBodyText = modal.querySelector('.modal-body p');
+                    const modalSteps = modal.querySelector('.modal-steps');
+                    const cancelBtn = document.getElementById('cancelBtn');
+                    const proceedBtn = document.getElementById('proceedBtn');
+                    const closeModal = document.querySelector('.close-modal');
+
+                    // Update Content for Success
+                    modalHeader.textContent = "Message Sent!";
+                    modalIcon.className = "fas fa-check-circle";
+                    modalBodyText.textContent = "Your message has been sent successfully. We will get back to you soon.";
+                    modalSteps.style.display = 'none';
+
+                    // Update Buttons
+                    cancelBtn.style.display = 'none';
+                    proceedBtn.innerHTML = 'Close';
+                    proceedBtn.className = 'btn btn-primary';
+
+                    proceedBtn.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+                    closeModal.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+
+                    modal.style.display = 'block';
+                    contactForm.reset();
+                })
+                .catch(error => {
+                    console.error('Email Error:', error);
+
+                    // Fallback to Mailto
+                    const body = `Name: ${name}\nEmail: ${emailInput}\n\nMessage:\n${message}`;
+                    const mailtoLink = `mailto:${targetEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+                    // Show Modal for Failure
+                    const modal = document.getElementById('reviewModal');
+                    const modalHeader = modal.querySelector('.modal-header h3');
+                    const modalIcon = modal.querySelector('.modal-header i');
+                    const modalBodyText = modal.querySelector('.modal-body p');
+                    const modalSteps = modal.querySelector('.modal-steps');
+                    const cancelBtn = document.getElementById('cancelBtn');
+                    const proceedBtn = document.getElementById('proceedBtn');
+                    const closeModal = document.querySelector('.close-modal');
+
+                    modalHeader.textContent = "Sending Failed";
+                    modalIcon.className = "fas fa-exclamation-circle";
+                    modalBodyText.textContent = "Automatic sending failed. Please click 'Proceed to Email' to send via your mail client.";
+                    modalSteps.style.display = 'none'; // Hide review steps
+
+                    cancelBtn.style.display = 'inline-block';
+                    proceedBtn.innerHTML = 'Proceed to Email <i class="fas fa-arrow-right"></i>';
+
+                    proceedBtn.onclick = function () {
+                        window.location.href = mailtoLink;
+                        modal.style.display = 'none';
+                        contactForm.reset();
+                    };
+                    closeModal.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+                    cancelBtn.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+
+                    modal.style.display = 'block';
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnText;
+                });
         });
     }
 });
