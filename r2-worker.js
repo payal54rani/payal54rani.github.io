@@ -49,14 +49,19 @@ export default {
             });
         }
 
-        // Only allow POST requests to /upload
-        if (request.method !== 'POST' || url.pathname !== '/upload') {
+        // Only allow POST requests to /upload or /send-email
+        if (request.method !== 'POST' || (url.pathname !== '/upload' && url.pathname !== '/send-email')) {
             return new Response(JSON.stringify({
                 error: 'Not Found'
             }), {
                 status: 404,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
+        }
+
+        // Route: Send Email
+        if (url.pathname === '/send-email') {
+            return handleEmail(request, env, corsHeaders);
         }
 
         // Optional: Check auth secret
@@ -160,3 +165,46 @@ export default {
         }
     }
 };
+
+// Helper to handle email sending
+async function handleEmail(request, env, corsHeaders) {
+    try {
+        const { subject, html, to } = await request.json();
+
+        if (!env.RESEND_API_KEY) {
+            throw new Error('RESEND_API_KEY not configured');
+        }
+
+        const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                from: 'onboarding@resend.dev', // Use this until you verify a domain
+                //to: to || 'payal.akshadhaafoundation@gmail.com', // Default to owner
+                to: to || 'suvamsingh55@gmail.com', // Default to resend owner
+                subject: subject,
+                html: html
+            })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.message || 'Failed to send email');
+        }
+
+        return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+    } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}

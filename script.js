@@ -292,52 +292,142 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Construct Mailto Link
-            const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            // Construct Email Payload
+            const emailHtml = `
+                <h3>New ${currentReviewType.toUpperCase()} Review</h3>
+                <p><strong>Name:</strong> ${name}</p>
+                ${childName ? `<p><strong>Child's Name:</strong> ${childName}</p>` : ''}
+                ${childAge ? `<p><strong>Child's Age:</strong> ${childAge}</p>` : ''}
+                <p><strong>Review Type:</strong> ${currentReviewType}</p>
+                ${message ? `<p><strong>Review:</strong><br>${message.replace(/\n/g, '<br>')}</p>` : ''}
+                ${mediaLink ? `<p><strong>Media Link:</strong> <a href="${mediaLink}">${mediaLink}</a></p>` : ''}
+            `;
 
-            // Modal Logic
-            const modal = document.getElementById('reviewModal');
-            const closeModal = document.querySelector('.close-modal');
-            const cancelBtn = document.getElementById('cancelBtn');
-            const proceedBtn = document.getElementById('proceedBtn');
-            const downloadStep = document.getElementById('downloadStep');
-            const attachStep = document.getElementById('attachStep');
-            const modalBodyText = document.querySelector('.modal-body p');
+            // Show Loading State
+            const submitBtn = reviewForm.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
 
-            // Show/Hide steps based on review type
-            if ((currentReviewType === 'audio' || currentReviewType === 'video') && !mediaLink) {
-                downloadStep.style.display = 'list-item';
-                attachStep.style.display = 'list-item';
-                if (modalBodyText) modalBodyText.textContent = "To complete your review submission, please follow these steps:";
-            } else {
-                downloadStep.style.display = 'none';
-                attachStep.style.display = 'none';
-                if (modalBodyText) modalBodyText.textContent = "Your review is ready to send. Click 'Proceed to Email' to finish.";
-            }
+            // Send Email via Worker
+            fetch(`${WORKER_URL}/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: email,
+                    subject: subject,
+                    html: emailHtml
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) throw new Error(data.error);
 
-            // Show Modal
-            modal.style.display = 'block';
+                    // Success - Show Modal
+                    const modal = document.getElementById('reviewModal');
+                    const modalHeader = modal.querySelector('.modal-header h3');
+                    const modalIcon = modal.querySelector('.modal-header i');
+                    const modalBodyText = modal.querySelector('.modal-body p');
+                    const modalSteps = modal.querySelector('.modal-steps');
+                    const cancelBtn = document.getElementById('cancelBtn');
+                    const proceedBtn = document.getElementById('proceedBtn');
+                    const closeModal = document.querySelector('.close-modal');
 
-            // Proceed Button Click
-            proceedBtn.onclick = function () {
-                window.location.href = mailtoLink;
-                modal.style.display = 'none';
-                // Reset form
-                document.getElementById('reviewForm').reset();
-            }
+                    // Update Content for Success
+                    modalHeader.textContent = "Thank You!";
+                    modalIcon.className = "fas fa-check-circle";
+                    modalBodyText.textContent = "Your review has been submitted successfully.";
+                    modalSteps.style.display = 'none';
 
-            // Close/Cancel Logic
-            closeModal.onclick = function () {
-                modal.style.display = 'none';
-            }
-            cancelBtn.onclick = function () {
-                modal.style.display = 'none';
-            }
-            window.onclick = function (event) {
-                if (event.target == modal) {
-                    modal.style.display = 'none';
-                }
-            }
+                    // Update Buttons
+                    cancelBtn.style.display = 'none';
+                    proceedBtn.innerHTML = 'Close';
+                    proceedBtn.className = 'btn btn-primary'; // Ensure class is correct
+
+                    proceedBtn.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+                    closeModal.onclick = function () {
+                        modal.style.display = 'none';
+                    };
+
+                    modal.style.display = 'block';
+
+                    reviewForm.reset();
+
+                    // Reset UI
+                    if (currentReviewType !== 'text') {
+                        document.getElementById('recordingStatus').textContent = "";
+                        document.getElementById('downloadLink').style.display = 'none';
+                        document.getElementById('audioPreview').style.display = 'none';
+                        document.getElementById('videoPreview').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Email Error:', error);
+                    // Removed alert() to show message in modal instead
+
+                    // --- Fallback: Mailto with Modal ---
+                    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+                    // Modal Elements
+                    const modal = document.getElementById('reviewModal');
+                    const modalHeader = modal.querySelector('.modal-header h3');
+                    const modalIcon = modal.querySelector('.modal-header i');
+                    const closeModal = document.querySelector('.close-modal');
+                    const cancelBtn = document.getElementById('cancelBtn');
+                    const proceedBtn = document.getElementById('proceedBtn');
+                    const downloadStep = document.getElementById('downloadStep');
+                    const attachStep = document.getElementById('attachStep');
+                    const modalBodyText = document.querySelector('.modal-body p');
+                    const modalSteps = modal.querySelector('.modal-steps');
+
+                    // Reset Content for Fallback (in case it was changed by success)
+                    modalHeader.textContent = "Almost Done!";
+                    modalIcon.className = "fas fa-paper-plane";
+                    modalSteps.style.display = 'block';
+                    cancelBtn.style.display = 'inline-block';
+                    proceedBtn.innerHTML = 'Proceed to Email <i class="fas fa-arrow-right"></i>';
+
+                    // Configure Modal Content based on upload status
+                    if ((currentReviewType === 'audio' || currentReviewType === 'video') && !mediaLink) {
+                        // Upload failed or wasn't tried, so user needs to attach manually
+                        downloadStep.style.display = 'list-item';
+                        attachStep.style.display = 'list-item';
+                        if (modalBodyText) modalBodyText.textContent = "Automatic sending failed. Please follow these steps to submit manually:";
+                    } else {
+                        // Upload succeeded (link exists) or it's a text review
+                        downloadStep.style.display = 'none';
+                        attachStep.style.display = 'none';
+                        if (modalBodyText) modalBodyText.textContent = "Automatic sending failed (likely due to daily quota). Please click 'Proceed to Email' to send via your mail client.";
+                    }
+
+                    // Show Modal
+                    modal.style.display = 'block';
+
+                    // Event Handlers
+                    proceedBtn.onclick = function () {
+                        window.location.href = mailtoLink;
+                        modal.style.display = 'none';
+                        document.getElementById('reviewForm').reset();
+                    }
+
+                    closeModal.onclick = function () {
+                        modal.style.display = 'none';
+                    }
+                    cancelBtn.onclick = function () {
+                        modal.style.display = 'none';
+                    }
+                    window.onclick = function (event) {
+                        if (event.target == modal) {
+                            modal.style.display = 'none';
+                        }
+                    }
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnText;
+                });
         });
     }
 
