@@ -545,4 +545,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
         });
     }
+
+    // SoundCloud Facade Logic
+    const scPlaceholder = document.getElementById('soundcloud-placeholder');
+    if (scPlaceholder) {
+        scPlaceholder.addEventListener('click', function () {
+            const src = this.getAttribute('data-src');
+            const iframe = document.createElement('iframe');
+            iframe.setAttribute('width', '100%');
+            iframe.setAttribute('height', '166');
+            iframe.setAttribute('scrolling', 'no');
+            iframe.setAttribute('frameborder', 'no');
+            iframe.setAttribute('allow', 'autoplay');
+            iframe.setAttribute('src', src);
+
+            this.innerHTML = ''; // Clear placeholder
+            this.appendChild(iframe);
+            this.removeAttribute('id'); // Remove ID to stop hover effects
+            this.style.cursor = 'default';
+            this.style.background = 'transparent';
+        });
+    }
 });

@@ -332,9 +332,12 @@
 
                     <!-- Audio Review (SoundCloud Embed) -->
                     <div class="testimonial-card fade-in-up delay-200">
-                        <div class="audio-container">
-                            <iframe width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay"
-                                src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/293&color=%232a9d8f&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true"></iframe>
+                        <div class="audio-container" id="soundcloud-placeholder"
+                            data-src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/293&color=%232a9d8f&auto_play=true&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true">
+                            <div class="play-overlay">
+                                <i class="fas fa-play-circle"></i>
+                                <span>Play Audio Review</span>
+                            </div>
                         </div>
                         <div class="reviewer-info" style="margin-top: 15px;">
                             <div class="reviewer-avatar">A</div>
