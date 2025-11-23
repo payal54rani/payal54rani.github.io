@@ -112,72 +112,124 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Recording Logic
+    // --- Media Recording Logic ---
+    // CLOUDFLARE WORKER URL (Update this after deploying your worker)
+    const WORKER_URL = "https://shiny-queen-f1fa.suvamsingh55.workers.dev";
+
     let mediaRecorder;
-    let recordedChunks = [];
+    let audioChunks = [];
+    let videoChunks = [];
+    let stream;
+
     const startRecordBtn = document.getElementById('startRecordBtn');
     const stopRecordBtn = document.getElementById('stopRecordBtn');
     const recordingStatus = document.getElementById('recordingStatus');
-    const audioPreview = document.getElementById('audioPreview');
-    const videoPreview = document.getElementById('videoPreview');
     const audioPlayer = document.getElementById('audioPlayer');
     const videoPlayer = document.getElementById('videoPlayer');
+    const audioPreview = document.getElementById('audioPreview');
+    const videoPreview = document.getElementById('videoPreview');
     const downloadLink = document.getElementById('downloadLink');
+    const recordingTitle = document.getElementById('recordingTitle');
+
+    // Helper to upload to R2 via Worker
+    async function uploadToR2(blob, filename) {
+        if (WORKER_URL === "YOUR_WORKER_URL_HERE") {
+            alert("Please configure the Cloudflare Worker URL in script.js to enable uploads.");
+            // Fallback to download
+            downloadLink.style.display = 'inline-block';
+            downloadLink.textContent = "Download Recording (Upload Not Configured)";
+            return null;
+        }
+
+        recordingStatus.textContent = "Uploading...";
+        recordingStatus.style.color = "blue";
+
+        try {
+            const response = await fetch(`${WORKER_URL}/upload?fileName=${filename}`, {
+                method: 'POST',
+                body: blob
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const data = await response.json();
+            recordingStatus.textContent = "Upload Successful! You can now submit.";
+            recordingStatus.style.color = "green";
+
+            // Auto-fill the media link input with the public URL
+            document.getElementById('mediaLink').value = data.url;
+            return data.key;
+        } catch (error) {
+            console.error(error);
+            recordingStatus.textContent = "Upload Failed. Please download the file instead.";
+            recordingStatus.style.color = "red";
+            // Show download link on failure
+            downloadLink.style.display = 'inline-block';
+            downloadLink.textContent = "Download Recording";
+            return null;
+        }
+    }
 
     if (startRecordBtn && stopRecordBtn) {
         startRecordBtn.addEventListener('click', async () => {
-            recordedChunks = [];
-            const constraints = currentReviewType === 'audio'
-                ? { audio: true }
-                : { audio: true, video: true };
+            const type = currentReviewType; // 'audio' or 'video'
+            audioChunks = [];
+            videoChunks = [];
 
             try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-                // Show preview for video while recording
-                if (currentReviewType === 'video') {
-                    videoPreview.style.display = 'block';
+                if (type === 'audio') {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } else {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                     videoPlayer.srcObject = stream;
-                    videoPlayer.muted = true; // Mute preview to avoid feedback
                     videoPlayer.play();
+                    videoPreview.style.display = 'block';
+                    audioPreview.style.display = 'none';
                 }
 
                 mediaRecorder = new MediaRecorder(stream);
 
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
-                        recordedChunks.push(event.data);
+                        if (type === 'audio') audioChunks.push(event.data);
+                        else videoChunks.push(event.data);
                     }
                 };
 
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, {
-                        type: currentReviewType === 'audio' ? 'audio/webm' : 'video/webm'
-                    });
-                    const url = URL.createObjectURL(blob);
+                mediaRecorder.onstop = async () => {
+                    let blob;
+                    const timestamp = new Date().getTime();
+                    let filename;
 
-                    // Stop all tracks to release camera/mic
-                    stream.getTracks().forEach(track => track.stop());
-
-                    // Setup download
-                    downloadLink.href = url;
-                    downloadLink.download = `payal_review_${Date.now()}.${currentReviewType === 'audio' ? 'webm' : 'webm'}`;
-                    downloadLink.style.display = 'inline-block';
-                    downloadLink.innerHTML = `<i class="fas fa-download"></i> Download ${currentReviewType === 'audio' ? 'Audio' : 'Video'}`;
-
-                    // Setup Preview
-                    if (currentReviewType === 'audio') {
+                    if (type === 'audio') {
+                        blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        audioPlayer.src = URL.createObjectURL(blob);
                         audioPreview.style.display = 'block';
-                        audioPlayer.src = url;
+                        videoPreview.style.display = 'none';
+                        filename = `audio_${timestamp}.webm`;
+
+                        // Setup download link (hidden initially)
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.download = filename;
                     } else {
-                        videoPreview.style.display = 'block';
+                        blob = new Blob(videoChunks, { type: 'video/webm' });
                         videoPlayer.srcObject = null;
-                        videoPlayer.src = url;
-                        videoPlayer.muted = false;
+                        videoPlayer.src = URL.createObjectURL(blob);
                         videoPlayer.controls = true;
+                        filename = `video_${timestamp}.webm`;
+
+                        // Setup download link (hidden initially)
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.download = filename;
                     }
 
-                    recordingStatus.textContent = "Recording finished. Click Download to save.";
+                    stream.getTracks().forEach(track => track.stop());
+
+                    downloadLink.style.display = 'none'; // Hide download button initially
+
+                    // Trigger Upload
+                    await uploadToR2(blob, filename);
+
                     startRecordBtn.classList.remove('recording');
                     startRecordBtn.disabled = false;
                     stopRecordBtn.disabled = true;
@@ -250,14 +302,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const proceedBtn = document.getElementById('proceedBtn');
             const downloadStep = document.getElementById('downloadStep');
             const attachStep = document.getElementById('attachStep');
+            const modalBodyText = document.querySelector('.modal-body p');
 
             // Show/Hide steps based on review type
             if ((currentReviewType === 'audio' || currentReviewType === 'video') && !mediaLink) {
                 downloadStep.style.display = 'list-item';
                 attachStep.style.display = 'list-item';
+                if (modalBodyText) modalBodyText.textContent = "To complete your review submission, please follow these steps:";
             } else {
                 downloadStep.style.display = 'none';
                 attachStep.style.display = 'none';
+                if (modalBodyText) modalBodyText.textContent = "Your review is ready to send. Click 'Proceed to Email' to finish.";
             }
 
             // Show Modal
